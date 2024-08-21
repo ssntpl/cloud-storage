@@ -2,7 +2,7 @@
 
 // declare(strict_types=1);
 
-namespace Ssntpl\FlySystemCloud\Cloud;
+namespace Ssntpl\FlysystemCloud\Cloud;
 
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Storage;
@@ -32,7 +32,7 @@ class CloudAdapter implements Filesystem
             foreach($this->remoteDisks as $remoteDisk){
                 if ($this->diskP($remoteDisk)->exists($path)){
                     $this->diskP($this->cacheDisk)->writeStream($path,$this->diskP($remoteDisk)->readStream($path));
-                    \Ssntpl\FlySystemCloud\Jobs\DeleteFileJob::dispatch($path)->delay(now()->addMinutes($this->cacheTime));
+                    \Ssntpl\FlysystemCloud\Jobs\DeleteFileJob::dispatch($path)->delay(now()->addMinutes($this->cacheTime));
                     return true;
                 }
             }
@@ -40,7 +40,7 @@ class CloudAdapter implements Filesystem
         }
         elseif ($deleteCache)
         {
-            \Ssntpl\FlySystemCloud\Jobs\DeleteFileJob::dispatch($path)->delay(now()->addMinutes($this->cacheTime));
+            \Ssntpl\FlysystemCloud\Jobs\DeleteFileJob::dispatch($path)->delay(now()->addMinutes($this->cacheTime));
         } 
         return true;
     }
@@ -51,7 +51,7 @@ class CloudAdapter implements Filesystem
         {
             foreach($this->remoteDisks as $remoteDisk){
                 if (! $this->diskP($remoteDisk)->exists($path)){
-                    \Ssntpl\FlySystemCloud\Jobs\SyncIndividualFileJob::dispatch($path,$remoteDisk);
+                    \Ssntpl\FlysystemCloud\Jobs\SyncIndividualFileJob::dispatch($path,$remoteDisk);
                 }
             }
             return true;
@@ -94,29 +94,9 @@ class CloudAdapter implements Filesystem
         $res = $this->diskP($this->cacheDisk)->put($path, $contents, $options); 
         if ($this->remoteDisks && $res)
         {
-            \Ssntpl\FlySystemCloud\Jobs\SyncFileJob::dispatch($path); 
+            \Ssntpl\FlysystemCloud\Jobs\SyncFileJob::dispatch($path); 
         }
         return $res;     
-    }
-
-    public function delete($paths)
-    {
-        $this->diskP($this->cacheDisk)->delete($paths);
-        foreach($this->remoteDisks as $remoteDisk){
-            $this->diskP($remoteDisk)->delete($paths);
-        }
-        if (is_array($paths))
-        {
-            foreach($paths as $path)
-            {
-                \DB::table('jobs')->where('payload', 'like', '%'.$path.'%')->delete();
-            }
-        }
-        else
-        {
-            \DB::table('jobs')->where('payload', 'like', '%'.$paths.'%')->delete();
-        }
-        return true;
     }
 
     public function path($path)
@@ -132,7 +112,7 @@ class CloudAdapter implements Filesystem
         $res = $this->diskP($this->cacheDisk)->putFile($path, $file, $options); 
         if ($this->remoteDisks && $res)
         {
-            \Ssntpl\FlySystemCloud\Jobs\SyncFileJob::dispatch($path); 
+            \Ssntpl\FlysystemCloud\Jobs\SyncFileJob::dispatch($path); 
         }
         return $res;
     }
@@ -142,7 +122,7 @@ class CloudAdapter implements Filesystem
         $res = $this->diskP($this->cacheDisk)->putFileAs($path, $file, $name, $options); 
         if ($this->remoteDisks && $res)
         {
-            \Ssntpl\FlySystemCloud\Jobs\SyncFileJob::dispatch($path); 
+            \Ssntpl\FlysystemCloud\Jobs\SyncFileJob::dispatch($path); 
         }
         return $res;
     }
@@ -153,6 +133,7 @@ class CloudAdapter implements Filesystem
         {
             return $this->diskP($this->cacheDisk)->exists($path);
         }
+        return false;
     }
 
     public function get($path)
@@ -170,6 +151,16 @@ class CloudAdapter implements Filesystem
             return $this->diskP($this->cacheDisk)->readStream($path);           
         }
     }
+
+    public function writeStream($path, $resource, array $options = [])
+    {
+        $res = $this->cacheDisk->writeStream($path, $resource, $options);
+        if ($this->remoteDisks && $res)
+        {
+            \Ssntpl\FlysystemCloud\Jobs\SyncFileJob::dispatch($path); 
+        }
+        return $res;
+    }
     
     public function copy($from, $to)
     {
@@ -178,7 +169,7 @@ class CloudAdapter implements Filesystem
             $res = $this->diskP($this->cacheDisk)->copy($from, $to);
             if ($this->remoteDisks && $res)
             {
-                \Ssntpl\FlySystemCloud\Jobs\SyncFileJob::dispatch($to); 
+                \Ssntpl\FlysystemCloud\Jobs\SyncFileJob::dispatch($to); 
                 return $res;
             }
         }
@@ -187,49 +178,55 @@ class CloudAdapter implements Filesystem
 
     public function move($from, $to)
     {
-        foreach($this->remoteDisks as $remoteDisks){
-            $remoteDisks->move($from, $to);
+        foreach($this->remoteDisks as $remoteDisk){
+            $this->diskP($remoteDisk)->move($from, $to);
         }
+        $this->diskP($this->cacheDisk)->move($from, $to);
         return true;
     }
 
     public function append($path, $data)
     {
-        foreach($this->remoteDisks as $remoteDisks){
-            $remoteDisks->append($path, $data);
+        foreach($this->remoteDisks as $remoteDisk){
+            $this->diskP($remoteDisk)->append($path, $data);
         }
+        $this->diskP($this->cacheDisk)->append($path, $data);
         return true;
     }
 
     public function makeDirectory($path)
     {
-        foreach($this->remoteDisks as $remoteDisks){
-            $remoteDisks->makeDirectory($path);
+        foreach($this->remoteDisks as $remoteDisk){
+            $this->diskP($remoteDisk)->makeDirectory($path);
         }
+        $this->diskP($this->cacheDisk)->makeDirectory($path);
         return true;
     }
 
     public function prepend($path, $data)
     {
-        foreach($this->remoteDisks as $remoteDisks){
-            $remoteDisks->prepend($path, $data);
+        foreach($this->remoteDisks as $remoteDisk){
+            $this->diskP($remoteDisk)->prepend($path, $data);
         }
+        $this->diskP($this->cacheDisk)->prepend($path, $data);
         return true;
     }
 
     public function setVisibility($path, $visibility)
     {
-        foreach($this->remoteDisks as $remoteDisks){
-            $remoteDisks->setVisibility($path, $visibility);
+        foreach($this->remoteDisks as $remoteDisk){
+            $this->diskP($remoteDisk)->setVisibility($path, $visibility);
         }
+        $this->diskP($this->cacheDisk)->setVisibility($path, $visibility);
         return true;
     }
 
     public function deleteDirectory($directory)
     {
-        foreach($this->remoteDisks as $remoteDisks){
-            $remoteDisks->deleteDirectory($directory);
+        foreach($this->remoteDisks as $remoteDisk){
+            $this->diskP($remoteDisk)->deleteDirectory($directory);
         }
+        $this->diskP($this->cacheDisk)->deleteDirectory($directory);
         return true;
     }
 
@@ -250,7 +247,10 @@ class CloudAdapter implements Filesystem
 
     public function getVisibility($path)
     {
-        return $this->diskP($this->remoteDisks[0])->getVisibility($path);
+        if ($this->setInCacheDisk($path)) 
+        {
+            return $this->diskP($this->cacheDisk)->getVisibility($path);
+        }
     }
 
     public function lastModified($path)
@@ -260,7 +260,10 @@ class CloudAdapter implements Filesystem
 
     public function size($path)
     {
-        return $this->diskP($this->remoteDisks[0])->size($path);
+        if ($this->setInCacheDisk($path)) 
+        {
+            return $this->diskP($this->cacheDisk)->size($path);
+        }
     }
 
     public function directories($directory = null, $recursive = false)
@@ -268,9 +271,23 @@ class CloudAdapter implements Filesystem
         return $this->diskP($this->remoteDisks[0])->directories($directory, $recursive);
     }
 
-    public function writeStream($path, $resource, array $options = [])
+    public function delete($paths)
     {
-        //logic is left for all disks
-        return $this->cacheDisk->writeStream($path, $resource, $options);
+        $this->diskP($this->cacheDisk)->delete($paths);
+        foreach($this->remoteDisks as $remoteDisk){
+            $this->diskP($remoteDisk)->delete($paths);
+        }
+        if (is_array($paths))
+        {
+            foreach($paths as $path)
+            {
+                \DB::table('jobs')->where('payload', 'like', '%'.$path.'%')->delete();
+            }
+        }
+        else
+        {
+            \DB::table('jobs')->where('payload', 'like', '%'.$paths.'%')->delete();
+        }
+        return true;
     }
 }

@@ -19,22 +19,17 @@
   "require": {
     "php": "^7.4|^8.0"
   },
-  "require-dev": {
+  "require-dev": {  
     "friendsofphp/php-cs-fixer": "^3.8",
     "nunomaduro/collision": "^6.0",
     "larastan/larastan": "^2.0.1",
-    "orchestra/testbench": "^7.0",
-    "pestphp/pest": "^1.21",
     "pestphp/pest-plugin-laravel": "^1.1",
     "phpstan/extension-installer": "^1.1",
-    "phpstan/phpstan-deprecation-rules": "^1.0",
-    "phpstan/phpstan-phpunit": "^1.0",
-    "phpunit/phpunit": "^9.5",
-    "spatie/laravel-ray": "^1.26"
+    "phpstan/phpstan-deprecation-rules": "^1.0"
   },
   "autoload": {
     "psr-4": {
-      "Ssntpl\\FlySystemCloud\\": "src"
+      "Ssntpl\\FlysystemCloud\\": "src"
     }
   },
   "autoload-dev": {
@@ -45,7 +40,7 @@
   "extra": {
     "laravel": {
       "providers": [
-        "Ssntpl\\FlySystemCloud\\FlySystemCloudServiceProvider"
+        "Ssntpl\\FlysystemCloud\\FlysystemCloudServiceProvider"
       ]
     }
   },

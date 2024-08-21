@@ -2,7 +2,6 @@
 # Associate files with Eloquent models
 
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/ssntpl/laravel-files.svg?style=flat-square)](https://packagist.org/packages/ssntpl/laravel-files)
-[![GitHub Tests Action Status](https://img.shields.io/github/workflow/status/ssntpl/laravel-files/run-tests?label=tests)](https://github.com/ssntpl/laravel-files/actions?query=workflow%3Arun-tests+branch%3Amain)
 [![GitHub Code Style Action Status](https://img.shields.io/github/workflow/status/ssntpl/laravel-files/Check%20&%20fix%20styling?label=code%20style)](https://github.com/ssntpl/laravel-files/actions?query=workflow%3A"Check+%26+fix+styling"+branch%3Amain)
 [![Total Downloads](https://img.shields.io/packagist/dt/ssntpl/laravel-files.svg?style=flat-square)](https://packagist.org/packages/ssntpl/laravel-files)
 

@@ -1,6 +1,6 @@
 <?php
 
-namespace Ssntpl\FlySystemCloud\Jobs;
+namespace Ssntpl\FlysystemCloud\Jobs;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
