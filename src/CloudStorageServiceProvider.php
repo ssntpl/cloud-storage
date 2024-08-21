@@ -1,11 +1,11 @@
 <?php
 
-namespace Ssntpl\FlysystemCloud;
+namespace Ssntpl\CloudStorage;
 
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\ServiceProvider;
-use Ssntpl\FlysystemCloud\Cloud\CloudAdapter;
 
-class FlysystemCloudServiceProvider extends ServiceProvider
+class CloudStorageServiceProvider extends ServiceProvider
 {
     /**
      * Register any application services.
@@ -24,8 +24,8 @@ class FlysystemCloudServiceProvider extends ServiceProvider
      */
     public function boot()
     {
-        \Storage::extend('cloud', function ($app, $config) {
-            return new CloudAdapter($config['cache_time'],$config['cache_disk'], $config['remote_disks']);
+        Storage::extend('cloud', function ($app, $config) {
+            return new CloudStorageAdapter($config);
         });
     }
 }

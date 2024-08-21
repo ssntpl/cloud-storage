@@ -1,49 +1,61 @@
 {
-  "name": "ssntpl/flysystem-cloud",
-  "description": "",
+  "name": "ssntpl/cloud-storage",
+  "description": "Laravel Storage Driver to sync files on to the multiple disks asynchronously",
   "keywords": [
     "ssntpl",
     "laravel",
     "flysystem",
-    "flysystem-cloud"
+    "cloud-storage"
   ],
-  "homepage": "https://github.com/ssntpl/flysystem-cloud",
+  "homepage": "https://github.com/ssntpl/cloud-storage",
   "license": "MIT",
   "authors": [
     {
-      "name": "Sam",
-      "email": "nuclearsam@gmail.com",
+      "name": "Abhishek Sharma",
+      "email": "abhishek.sharma@ssntpl.in",
+      "homepage": "https://ssntpl.com",
+      "role": "Developer"
+    },
+    {
+      "name": "Sambhav Aggarwal",
+      "homepage": "https://ssntpl.com",
       "role": "Developer"
     }
   ],
   "require": {
-    "php": "^7.4|^8.0"
+    "php": "^7.4|^8.0",
+    "laravel/framework": "^9.0|^10.0|^11.0"
   },
-  "require-dev": {  
+  "require-dev": {
     "friendsofphp/php-cs-fixer": "^3.8",
     "nunomaduro/collision": "^6.0",
     "larastan/larastan": "^2.0.1",
     "pestphp/pest-plugin-laravel": "^1.1",
     "phpstan/extension-installer": "^1.1",
-    "phpstan/phpstan-deprecation-rules": "^1.0"
+    "phpstan/phpstan-deprecation-rules": "^1.0",
+    "laravel/pint": "^1.17"
   },
   "autoload": {
     "psr-4": {
-      "Ssntpl\\FlysystemCloud\\": "src"
+      "Ssntpl\\CloudStorage\\": "src"
     }
   },
   "autoload-dev": {
-    "psr-4": {
-      
-    }
+    "psr-4": {}
   },
   "extra": {
     "laravel": {
       "providers": [
-        "Ssntpl\\FlysystemCloud\\FlysystemCloudServiceProvider"
+        "Ssntpl\\CloudStorage\\CloudStorageServiceProvider"
       ]
     }
   },
   "minimum-stability": "dev",
-  "prefer-stable": true
+  "prefer-stable": true,
+  "config": {
+    "allow-plugins": {
+      "pestphp/pest-plugin": true,
+      "phpstan/extension-installer": true
+    }
+  }
 }

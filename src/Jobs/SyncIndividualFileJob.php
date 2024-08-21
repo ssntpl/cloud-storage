@@ -1,6 +1,6 @@
 <?php
 
-namespace Ssntpl\FlysystemCloud\Jobs;
+namespace Ssntpl\CloudStorage\Jobs;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -17,6 +17,7 @@ class SyncIndividualFileJob implements ShouldQueue
     public $tries = 3;
 
     protected $path;
+
     protected $toDisk;
 
     /**
@@ -30,6 +31,7 @@ class SyncIndividualFileJob implements ShouldQueue
 
     /**
      * Execute the job.
+     *
      * @return void
      */
     public function handle()
@@ -40,6 +42,7 @@ class SyncIndividualFileJob implements ShouldQueue
     public function backoff()
     {
         $interval = 1; // Set the interval in seconds for all retries
+
         return array_fill(0, $this->tries - 1, $interval);
     }
 }

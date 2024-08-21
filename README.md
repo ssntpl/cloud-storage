@@ -1,47 +1,82 @@
+# Cloud Driver for Laravel Storage
 
-# Associate files with Eloquent models
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/ssntpl/cloud-storage.svg?style=flat-square)](https://packagist.org/packages/ssntpl/cloud-storage)
+[![Total Downloads](https://img.shields.io/packagist/dt/ssntpl/cloud-storage.svg?style=flat-square)](https://packagist.org/packages/ssntpl/cloud-storage)
 
-[![Latest Version on Packagist](https://img.shields.io/packagist/v/ssntpl/laravel-files.svg?style=flat-square)](https://packagist.org/packages/ssntpl/laravel-files)
-[![GitHub Code Style Action Status](https://img.shields.io/github/workflow/status/ssntpl/laravel-files/Check%20&%20fix%20styling?label=code%20style)](https://github.com/ssntpl/laravel-files/actions?query=workflow%3A"Check+%26+fix+styling"+branch%3Amain)
-[![Total Downloads](https://img.shields.io/packagist/dt/ssntpl/laravel-files.svg?style=flat-square)](https://packagist.org/packages/ssntpl/laravel-files)
+A powerful Laravel storage driver that enables seamless synchronization of files across multiple disks, with an integrated cache disk for optimized performance.
 
-This is a simple package to associate files with your eloquent model in laravel. 
+## Features
+
+- **Multi-Disk Support:** Define multiple remote disks to store your files.
+- **Cache Disk:** Files are first uploaded to a designated cache disk for quick access.
+- **Asynchronous Sync:** Files are synced to all remote disks asynchronously, ensuring high availability.
+- **Optimized Access:** Files are accessed from the cache disk first; if not found, they are retrieved from the remote disks in the defined order.
 
 ## Installation
 
-You can install the package via composer:
+Install the package via Composer:
 
 ```bash
-composer require ssntpl/flysystem-cloud
+composer require ssntpl/cloud-storage
 ```
 
-## Testing
+## Usage
 
-```bash
-composer test
-```
+1. **Configuration:** In your Laravel application's `config/filesystems.php`, define your disks, including the cache disk.
 
-## TODO
-- [ ] Declare the `Ssntpl\LaravelFiles\Contracts\File` contract
-- [ ] Add option to define default disk for every model
-- [ ] Add path() method that returns the full path of the file
-- [ ] Make File model sub-class of `Illuminate\Http\File` and see if all the methods work fine.
-- [ ] See if destroy/delete method can be modified in trait to handle the file objects
+   ```php
+   'disks' => [
+       'cloud_disk' => [
+           'driver' => 'cloud',
+           'cache_disk' => 'local',
+           'remote_disks' => [
+                'remote_disk_1', 
+                'remote_disk_2', 
+                's3', 
+                'minio',
+                // Add more remote disks as needed...
+           ],
+           'cache_time' => 24, // Time (in hours) to cache files on the cache disk
+       ],
+
+       // Define other disks (including cache disk, and remote disks used in the cloud disk above)
+   ],
+   ```
+
+2. **Upload Files:**
+   When uploading files using this driver, they will first be stored on the cache disk and then asynchronously synced to all defined remote disks.
+
+   ```php
+   Storage::disk('cloud_disk')->put('path/to/file.jpg', $fileContents);
+   ```
+
+3. **Access Files:**
+   The driver will check the cache disk first; if the file isn't found there, it will sequentially check each remote disk as configured.
+
+   ```php
+   $file = Storage::disk('cloud_disk')->get('path/to/file.jpg');
+   ```
+
+## Future Enhancements
+
+- **Improved Sync Strategies:** Additional options for sync strategies, such as prioritizing certain disks.
+- **Advanced Caching Mechanisms:** Enhance caching strategies to improve performance in specific use cases.
+- **Monitoring and Alerts:** Integrate monitoring for sync failures and performance metrics.
 
 ## Changelog
 
-Please see [CHANGELOG](CHANGELOG.md) for more information on what has changed recently.
-
+Please see [CHANGELOG](CHANGELOG.md) for detailed information on the latest changes.
 
 ## Security Vulnerabilities
 
-Please review [our security policy](../../security/policy) on how to report security vulnerabilities.
+If you discover any security-related issues, please email support@ssntpl.com instead of using the issue tracker.
 
 ## Credits
 
-- [Sam](https://github.com/ssntpl)
+- [Abhishek Sharma](https://github.com/Abhishek5Sharma)
+- [Sambhav Aggarwal](https://github.com/sambhav-aggarwal)
 - [All Contributors](../../contributors)
 
 ## License
 
-The MIT License (MIT). Please see [License File](LICENSE.md) for more information.
+This package is licensed under the MIT License. See the [License File](LICENSE.md) for more details.

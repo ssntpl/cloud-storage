@@ -1,6 +1,6 @@
 <?php
 
-namespace Ssntpl\FlysystemCloud\Jobs;
+namespace Ssntpl\CloudStorage\Jobs;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -25,6 +25,7 @@ class SyncFileJob implements ShouldQueue
 
     /**
      * Execute the job.
+     *
      * @return void
      */
     public function handle()
