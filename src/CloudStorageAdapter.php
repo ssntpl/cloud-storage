@@ -6,7 +6,7 @@ use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Storage;
 use Ssntpl\CloudStorage\Jobs\DeleteFileJob;
 use Ssntpl\CloudStorage\Jobs\SyncFileJob;
-use Ssntpl\CloudStorage\Jobs\SyncIndividualFileJob;
+use Exception;
 
 class CloudStorageAdapter implements Filesystem
 {
@@ -16,11 +16,17 @@ class CloudStorageAdapter implements Filesystem
 
     protected $cacheTime;
 
+    protected $queue;
+
+    protected $connection;
+
     public function __construct($config)
     {
+        $this->connection = $config['connection']??null;
+        $this->queue = $config['queue']??null;
         $this->cacheDisk = $config['cache_disk'];
-        $this->remoteDisks = $config['remote_disks'];
         $this->cacheTime = $config['cache_time'];
+        $this->remoteDisks = is_array($config['remote_disks'])? $config['remote_disks']: explode(',',$config['remote_disks']);
     }
 
     private function diskP($disk)
@@ -30,30 +36,29 @@ class CloudStorageAdapter implements Filesystem
 
     private function setInCacheDisk($path, $deleteCache = false)
     {
+        $res = false;
         if (! $this->diskP($this->cacheDisk)->exists($path)) {
             foreach ($this->remoteDisks as $remoteDisk) {
                 if ($this->diskP($remoteDisk)->exists($path)) {
-                    $this->diskP($this->cacheDisk)->writeStream($path, $this->diskP($remoteDisk)->readStream($path));
-                    DeleteFileJob::dispatch($path)->delay(now()->addHours($this->cacheTime));
-
-                    return true;
+                    $res = $this->diskP($this->cacheDisk)->writeStream($path, $this->diskP($remoteDisk)->readStream($path));
+                    $deleteCache = true;
                 }
             }
-
-            return false;
-        } elseif ($deleteCache) {
-            DeleteFileJob::dispatch($path)->delay(now()->addHours($this->cacheTime));
+        } 
+        if ($deleteCache && $this->cacheTime != 0) {
+            DeleteFileJob::dispatch($path, $this->cacheDisk, $this->remoteDisks)->onConnection($this->connection)->onQueue($this->queue)->delay(now()->addHours($this->cacheTime));
+            $res = true;
         }
 
-        return true;
+        return $res;
     }
 
-    public function sync($path)
+    public function sync($path, $fromDisk)
     {
         if ($this->setInCacheDisk($path, true)) {
             foreach ($this->remoteDisks as $remoteDisk) {
                 if (! $this->diskP($remoteDisk)->exists($path)) {
-                    SyncIndividualFileJob::dispatch($path, $remoteDisk);
+                    SyncFileJob::dispatch($path, $fromDisk, $remoteDisk)->onConnection($this->connection)->onQueue($this->queue);
                 }
             }
 
@@ -63,26 +68,49 @@ class CloudStorageAdapter implements Filesystem
         return false;
     }
 
-    public function syncToDisk($path, $toDisk)
+    /**
+     * sync file fromDisk to toDisk with path. If want to delete the file from fromDisk set the value true of deleteFromDisk
+     * @param  string  $path
+     * @param  string  $fromDisk
+     * @param  string  $toDisk
+     * @param  bool  $deleteFromDisk
+     * @return bool|\Exception
+     */
+    public static function syncToDisk($path, $fromDisk, $toDisk, $deleteFromDisk = false)
     {
-        if ($this->setInCacheDisk($path)) {
-            $this->diskP($toDisk)->writeStream($path, $this->diskP($this->cacheDisk)->readStream($path));
+        $res = Storage::disk($toDisk)->writeStream($path, Storage::disk($fromDisk)->readStream($path));
+        if ($deleteFromDisk && $res){
+            Storage::disk($fromDisk)->delete($path);
         }
+        
+        if (!$res){
+            throw new Exception('unable to sync file into disk');
+        }
+        return $res;
     }
 
-    public function deleteFromCache($path)
-    {
-        if ($this->diskP($this->cacheDisk)->exists($path)) {
-            foreach ($this->remoteDisks as $remoteDisk) {
-                if ($this->diskP($remoteDisk)->exists($path)) {
-                    $this->diskP($this->cacheDisk)->delete($path);
 
-                    return true;
+    /**
+     * Delete file from disk if file exist at any given disks(ifSyscedDisks), If ifSyncedDisks are null delete file from disk without check.
+     * @param string $path
+     * @param string $disk
+     * @param array $ifExistDisk
+     * @return bool
+     */
+    public static function deleteFromDisk($path, $fromDisk, $ifSyncedDisks = null)
+    {
+        $isExist = Storage::disk($fromDisk)->exists($path);
+        if ( $isExist && $ifSyncedDisks) {
+            foreach ($ifSyncedDisks as $disk) {
+                if (Storage::disk($disk)->exists($path)) {                    
+                    return Storage::disk($fromDisk)->delete($path);
                 }
             }
-
-            return new \Exception('File not deleted from cache');
+            return false;
+        } elseif ($isExist){
+            return Storage::disk($fromDisk)->delete($path);
         }
+        return false;
     }
 
     public function url($path)
@@ -97,7 +125,7 @@ class CloudStorageAdapter implements Filesystem
     {
         $res = $this->diskP($this->cacheDisk)->put($path, $contents, $options);
         if ($this->remoteDisks && $res) {
-            SyncFileJob::dispatch($path);
+            $this->sync($path, $this->cacheDisk);
         }
 
         return $res;
@@ -114,7 +142,7 @@ class CloudStorageAdapter implements Filesystem
     {
         $res = $this->diskP($this->cacheDisk)->putFile($path, $file, $options);
         if ($this->remoteDisks && $res) {
-            SyncFileJob::dispatch($path);
+            $this->sync($path, $this->cacheDisk);
         }
 
         return $res;
@@ -124,7 +152,7 @@ class CloudStorageAdapter implements Filesystem
     {
         $res = $this->diskP($this->cacheDisk)->putFileAs($path, $file, $name, $options);
         if ($this->remoteDisks && $res) {
-            SyncFileJob::dispatch($path);
+            $this->sync("$path/$name", $this->cacheDisk);
         }
 
         return $res;
@@ -155,9 +183,9 @@ class CloudStorageAdapter implements Filesystem
 
     public function writeStream($path, $resource, array $options = [])
     {
-        $res = $this->cacheDisk->writeStream($path, $resource, $options);
+        $res = $this->diskP($this->cacheDisk)->writeStream($path, $resource, $options);
         if ($this->remoteDisks && $res) {
-            SyncFileJob::dispatch($path);
+            $this->sync($path, $this->cacheDisk);
         }
 
         return $res;
@@ -168,7 +196,7 @@ class CloudStorageAdapter implements Filesystem
         if ($this->setInCacheDisk($from)) {
             $res = $this->diskP($this->cacheDisk)->copy($from, $to);
             if ($this->remoteDisks && $res) {
-                SyncFileJob::dispatch($to);
+                $this->sync($to, $this->cacheDisk);
 
                 return $res;
             }
