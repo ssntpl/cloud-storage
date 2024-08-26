@@ -305,19 +305,10 @@ class CloudStorageAdapter implements Filesystem
     }
 
     public function delete($paths)
-    {
-        $this->diskP($this->cacheDisk)->delete($paths);
+    {        
         foreach ($this->remoteDisks as $remoteDisk) {
-            $this->diskP($remoteDisk)->delete($paths);
+            DeleteFileJob::dispatch($paths, $remoteDisk)->onConnection($this->connection)->onQueue($this->queue);
         }
-        if (is_array($paths)) {
-            foreach ($paths as $path) {
-                \DB::table('jobs')->where('payload', 'like', '%'.$path.'%')->delete();
-            }
-        } else {
-            \DB::table('jobs')->where('payload', 'like', '%'.$paths.'%')->delete();
-        }
-
-        return true;
+        return $this->diskP($this->cacheDisk)->delete($paths);
     }
 }
