@@ -6,6 +6,7 @@ use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Support\Facades\Storage;
 use Ssntpl\CloudStorage\Jobs\DeleteFileJob;
 use Ssntpl\CloudStorage\Jobs\SyncFileJob;
+use Ssntpl\CloudStorage\Jobs\ActionSyncJob;
 use Exception;
 
 class CloudStorageAdapter implements Filesystem
@@ -36,8 +37,10 @@ class CloudStorageAdapter implements Filesystem
 
     private function setInCacheDisk($path, $deleteCache = false)
     {
-        $res = false;
+        $res = true;
         if (! $this->diskP($this->cacheDisk)->exists($path)) {
+            $res = false;
+            $deleteCache = false;
             foreach ($this->remoteDisks as $remoteDisk) {
                 if ($this->diskP($remoteDisk)->exists($path)) {
                     $res = $this->diskP($this->cacheDisk)->writeStream($path, $this->diskP($remoteDisk)->readStream($path));
@@ -47,7 +50,6 @@ class CloudStorageAdapter implements Filesystem
         } 
         if ($deleteCache && $this->cacheTime != 0) {
             DeleteFileJob::dispatch($path, $this->cacheDisk, $this->remoteDisks)->onConnection($this->connection)->onQueue($this->queue)->delay(now()->addHours($this->cacheTime));
-            $res = true;
         }
 
         return $res;
@@ -113,11 +115,18 @@ class CloudStorageAdapter implements Filesystem
         return false;
     }
 
+    /**
+     * Summary of url
+     * @param string $path
+     * @return bool
+     */
     public function url($path)
     {
         if ($this->setInCacheDisk($path)) {
             return $this->diskP($this->cacheDisk)->url($path);
         }
+
+        return false;
     }
 
     // Implement all required methods from the Filesystem interface
@@ -208,7 +217,7 @@ class CloudStorageAdapter implements Filesystem
     public function move($from, $to)
     {
         foreach ($this->remoteDisks as $remoteDisk) {
-            $this->diskP($remoteDisk)->move($from, $to);
+            ActionSyncJob::dispatch(ActionSyncJob::MOVE, $remoteDisk, $from, $to)->onConnection($this->connection)->onQueue($this->queue);
         }
         $this->diskP($this->cacheDisk)->move($from, $to);
 
@@ -218,19 +227,9 @@ class CloudStorageAdapter implements Filesystem
     public function append($path, $data)
     {
         foreach ($this->remoteDisks as $remoteDisk) {
-            $this->diskP($remoteDisk)->append($path, $data);
+            ActionSyncJob::dispatch(ActionSyncJob::APPEND, $remoteDisk, $path, $data)->onConnection($this->connection)->onQueue($this->queue);
         }
         $this->diskP($this->cacheDisk)->append($path, $data);
-
-        return true;
-    }
-
-    public function makeDirectory($path)
-    {
-        foreach ($this->remoteDisks as $remoteDisk) {
-            $this->diskP($remoteDisk)->makeDirectory($path);
-        }
-        $this->diskP($this->cacheDisk)->makeDirectory($path);
 
         return true;
     }
@@ -238,7 +237,7 @@ class CloudStorageAdapter implements Filesystem
     public function prepend($path, $data)
     {
         foreach ($this->remoteDisks as $remoteDisk) {
-            $this->diskP($remoteDisk)->prepend($path, $data);
+            ActionSyncJob::dispatch(ActionSyncJob::PREPEND, $remoteDisk, $path, $data)->onConnection($this->connection)->onQueue($this->queue);
         }
         $this->diskP($this->cacheDisk)->prepend($path, $data);
 
@@ -248,9 +247,19 @@ class CloudStorageAdapter implements Filesystem
     public function setVisibility($path, $visibility)
     {
         foreach ($this->remoteDisks as $remoteDisk) {
-            $this->diskP($remoteDisk)->setVisibility($path, $visibility);
+            ActionSyncJob::dispatch(ActionSyncJob::SET_VISIBILITY, $remoteDisk, $path, $visibility)->onConnection($this->connection)->onQueue($this->queue);
         }
         $this->diskP($this->cacheDisk)->setVisibility($path, $visibility);
+
+        return true;
+    }
+    
+    public function makeDirectory($path)
+    {
+        foreach ($this->remoteDisks as $remoteDisk) {
+            ActionSyncJob::dispatch(ActionSyncJob::MAKE_DIRECTORY, $remoteDisk, $path)->onConnection($this->connection)->onQueue($this->queue);
+        }
+        $this->diskP($this->cacheDisk)->makeDirectory($path);
 
         return true;
     }
@@ -258,7 +267,7 @@ class CloudStorageAdapter implements Filesystem
     public function deleteDirectory($directory)
     {
         foreach ($this->remoteDisks as $remoteDisk) {
-            $this->diskP($remoteDisk)->deleteDirectory($directory);
+            ActionSyncJob::dispatch(ActionSyncJob::DELETE_DIRECTORY, $remoteDisk, $directory)->onConnection($this->connection)->onQueue($this->queue);
         }
         $this->diskP($this->cacheDisk)->deleteDirectory($directory);
 
