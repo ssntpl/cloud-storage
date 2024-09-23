@@ -45,6 +45,7 @@ class CloudStorageAdapter implements Filesystem
                 if ($this->diskP($remoteDisk)->exists($path)) {
                     $res = $this->diskP($this->cacheDisk)->writeStream($path, $this->diskP($remoteDisk)->readStream($path));
                     $deleteCache = true;
+                    break;
                 }
             }
         } 
