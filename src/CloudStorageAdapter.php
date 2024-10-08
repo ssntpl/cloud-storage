@@ -126,8 +126,6 @@ class CloudStorageAdapter implements Filesystem
         if ($this->setInCacheDisk($path)) {
             return $this->diskP($this->cacheDisk)->url($path);
         }
-
-        return false;
     }
 
     // Implement all required methods from the Filesystem interface
