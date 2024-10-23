@@ -38,11 +38,11 @@ class CloudStorageAdapter implements Filesystem
     private function setInCacheDisk($path, $deleteCache = false)
     {
         $res = true;
-        if (! $this->diskP($this->cacheDisk)->exists($path)) {
+        if (! $this->checkExistance($this->cacheDisk, $path)) {
             $res = false;
             $deleteCache = false;
             foreach ($this->remoteDisks as $remoteDisk) {
-                if ($this->diskP($remoteDisk)->exists($path)) {
+                if ($this->checkExistance($remoteDisk, $path)) {
                     $res = $this->diskP($this->cacheDisk)->writeStream($path, $this->diskP($remoteDisk)->readStream($path));
                     $deleteCache = true;
                     break;
@@ -60,7 +60,7 @@ class CloudStorageAdapter implements Filesystem
     {
         if ($this->setInCacheDisk($path, true)) {
             foreach ($this->remoteDisks as $remoteDisk) {
-                if (! $this->diskP($remoteDisk)->exists($path)) {
+                if (! $this->checkExistance($remoteDisk, $path)) {
                     SyncFileJob::dispatch($path, $fromDisk, $remoteDisk)->onConnection($this->connection)->onQueue($this->queue);
                 }
             }
@@ -102,10 +102,10 @@ class CloudStorageAdapter implements Filesystem
      */
     public static function deleteFromDisk($path, $fromDisk, $ifSyncedDisks = null)
     {
-        $isExist = Storage::disk($fromDisk)->exists($path);
+        $isExist = self::checkExistance($fromDisk, $path);
         if ( $isExist && $ifSyncedDisks) {
             foreach ($ifSyncedDisks as $disk) {
-                if (Storage::disk($disk)->exists($path)) {                    
+                if (self::checkExistance($disk, $path)) {                    
                     return Storage::disk($fromDisk)->delete($path);
                 }
             }
@@ -119,12 +119,25 @@ class CloudStorageAdapter implements Filesystem
     /**
      * Summary of url
      * @param string $path
-     * @return bool
      */
     public function url($path)
     {
-        if ($this->setInCacheDisk($path)) {
+        if (! $this->checkExistance($this->cacheDisk, $path)) {
+            foreach ($this->remoteDisks as $remoteDisk) {
+                if ($this->checkExistance($remoteDisk,$path)) {
+                    return $this->diskP($remoteDisk)->url($path);
+                }
+            }
+        } else {
             return $this->diskP($this->cacheDisk)->url($path);
+        }
+    }
+
+    private static function checkExistance($disk, $path){
+        try {
+            return Storage::disk($disk)->exists($path);
+        } catch (\Throwable $exception) {
+            return false;
         }
     }
 
@@ -168,8 +181,14 @@ class CloudStorageAdapter implements Filesystem
 
     public function exists($path)
     {
-        if ($this->setInCacheDisk($path)) {
-            return $this->diskP($this->cacheDisk)->exists($path);
+        if ($this->checkExistance($this->cacheDisk, $path)) {
+            return true;
+        } else {
+            foreach ($this->remoteDisks as $remoteDisk) {
+                if ($this->checkExistance($remoteDisk,$path)) {
+                    return $this->diskP($this->cacheDisk)->exists($path);
+                }
+            }
         }
 
         return false;
