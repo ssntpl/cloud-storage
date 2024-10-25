@@ -8,6 +8,7 @@ use Ssntpl\CloudStorage\Jobs\DeleteFileJob;
 use Ssntpl\CloudStorage\Jobs\SyncFileJob;
 use Ssntpl\CloudStorage\Jobs\ActionSyncJob;
 use Exception;
+use Illuminate\Support\Facades\Log;
 
 class CloudStorageAdapter implements Filesystem
 {
@@ -137,6 +138,7 @@ class CloudStorageAdapter implements Filesystem
         try {
             return Storage::disk($disk)->exists($path);
         } catch (\Throwable $exception) {
+            Log::error("Unable to check file existence on ".$disk);
             return false;
         }
     }
