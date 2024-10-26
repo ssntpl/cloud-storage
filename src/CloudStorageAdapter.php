@@ -188,7 +188,7 @@ class CloudStorageAdapter implements Filesystem
         } else {
             foreach ($this->remoteDisks as $remoteDisk) {
                 if ($this->checkExistance($remoteDisk,$path)) {
-                    return $this->diskP($this->cacheDisk)->exists($path);
+                    return true;
                 }
             }
         }
