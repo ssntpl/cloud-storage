@@ -44,7 +44,16 @@ class CloudStorageAdapter implements Filesystem
             $deleteCache = false;
             foreach ($this->remoteDisks as $remoteDisk) {
                 if ($this->checkExistance($remoteDisk, $path)) {
-                    $res = $this->diskP($this->cacheDisk)->writeStream($path, $this->diskP($remoteDisk)->readStream($path));
+                    $stream = $this->diskP($remoteDisk)->readStream($path);
+                    if ($stream){                       
+                        try {
+                            $res = $this->diskP($this->cacheDisk)->writeStream($path, $stream);
+                        } finally {
+                            if (isset($stream)) {
+                                fclose($stream);
+                            }
+                        }
+                    }
                     $deleteCache = true;
                     break;
                 }
@@ -82,13 +91,24 @@ class CloudStorageAdapter implements Filesystem
      */
     public static function syncToDisk($path, $fromDisk, $toDisk, $deleteFromDisk = false)
     {
-        $res = Storage::disk($toDisk)->writeStream($path, Storage::disk($fromDisk)->readStream($path));
-        if ($deleteFromDisk && $res){
-            Storage::disk($fromDisk)->delete($path);
-        }
-        
-        if (!$res){
-            throw new Exception('unable to sync file into disk');
+        $res = false;
+        $stream = Storage::disk($fromDisk)->readStream($path);
+        if ($stream) {
+            try {
+                $res = Storage::disk($toDisk)->writeStream($path, $stream);
+            } finally {
+                if (isset($stream)) {
+                    fclose($stream);
+                }
+            }
+            
+            if ($deleteFromDisk && $res){
+                Storage::disk($fromDisk)->delete($path);
+            }
+            
+            if (!$res){
+                throw new Exception('unable to sync file into disk');
+            }
         }
         return $res;
     }
