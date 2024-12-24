@@ -22,10 +22,13 @@ class CloudStorageAdapter implements Filesystem
 
     protected $connection;
 
+    protected $url;
+
     public function __construct($config)
     {
         $this->connection = $config['connection']??null;
         $this->queue = $config['queue']??null;
+        $this->url = $config['url']??null;
         $this->cacheDisk = $config['cache_disk'];
         $this->cacheTime = $config['cache_time'];
         $this->remoteDisks = is_array($config['remote_disks'])? $config['remote_disks']: explode(',',$config['remote_disks']);
@@ -143,6 +146,9 @@ class CloudStorageAdapter implements Filesystem
      */
     public function url($path)
     {
+        if ($this->url) {
+            return $this->url.$path;
+        }
         if (! $this->checkExistance($this->cacheDisk, $path)) {
             foreach ($this->remoteDisks as $remoteDisk) {
                 if ($this->checkExistance($remoteDisk,$path)) {
