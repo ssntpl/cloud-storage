@@ -73,9 +73,7 @@ class CloudStorageAdapter implements Filesystem
     {
         if ($this->setInCacheDisk($path, true)) {
             foreach ($this->remoteDisks as $remoteDisk) {
-                if (! $this->checkExistance($remoteDisk, $path)) {
-                    SyncFileJob::dispatch($path, $fromDisk, $remoteDisk)->onConnection($this->connection)->onQueue($this->queue);
-                }
+                SyncFileJob::dispatch($path, $fromDisk, $remoteDisk)->onConnection($this->connection)->onQueue($this->queue);
             }
 
             return true;
