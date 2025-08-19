@@ -29,6 +29,7 @@ composer require ssntpl/cloud-storage
        'cloud_disk' => [
            'driver' => 'cloud',
            'cache_disk' => 'local',
+           'read_priority_cache_disk' => 1, // set cache disk priority when get disk url for given path
            'remote_disks' => [
                 'remote_disk_1', 
                 'remote_disk_2', 
@@ -36,6 +37,10 @@ composer require ssntpl/cloud-storage
                 'minio',
                 // Add more remote disks as needed...
            ],
+           'read_only_disks' => [
+                'read_disk_1',
+                'read_disk_2',
+            ], // used for read files only
            'cache_time' => 24, // Time (in hours) to cache files on the cache disk
        ],
 
