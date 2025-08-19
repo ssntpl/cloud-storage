@@ -14,7 +14,11 @@ class CloudStorageAdapter implements Filesystem
 {
     protected $cacheDisk;
 
+    protected $cacheDiskPriority;
+
     protected $remoteDisks;
+
+    protected $readOnlyDisks;
 
     protected $cacheTime;
 
@@ -26,12 +30,18 @@ class CloudStorageAdapter implements Filesystem
 
     public function __construct($config)
     {
-        $this->connection = $config['connection']??null;
-        $this->queue = $config['queue']??null;
-        $this->url = $config['url']??null;
+        $this->connection = $config['connection'] ?? null;
+        $this->queue = $config['queue'] ?? null;
+        $this->url = $config['url'] ?? null;
         $this->cacheDisk = $config['cache_disk'];
-        $this->cacheTime = $config['cache_time'];
-        $this->remoteDisks = is_array($config['remote_disks'])? $config['remote_disks']: explode(',',$config['remote_disks']);
+        $this->cacheDiskPriority = $config['read_priority_cache_disk'] ?? 1;
+        $this->cacheTime = $config['cache_time'] ?? 0;
+        $this->remoteDisks = is_array($config['remote_disks'] ?? [])? $config['remote_disks'] ?? []: explode(',',$config['remote_disks']);
+        $this->readOnlyDisks = is_array($config['read_only_disks'] ?? [])? $config['read_only_disks'] ?? []: explode(',',$config['read_only_disks']);
+        $this->readOnlyDisks = array_values(array_unique(array_merge($this->remoteDisks, $this->readOnlyDisks)));
+        if ($this->cacheDiskPriority) {
+            array_splice($this->readOnlyDisks, $this->cacheDiskPriority - 1, 0, $this->cacheDisk);
+        }
     }
 
     private function diskP($disk)
@@ -45,9 +55,9 @@ class CloudStorageAdapter implements Filesystem
         if (! $this->checkExistance($this->cacheDisk, $path)) {
             $res = false;
             $deleteCache = false;
-            foreach ($this->remoteDisks as $remoteDisk) {
-                if ($this->checkExistance($remoteDisk, $path)) {
-                    $stream = $this->diskP($remoteDisk)->readStream($path);
+            foreach ($this->readOnlyDisks as $readOnlyDisk) {
+                if ($this->checkExistance($readOnlyDisk, $path)) {
+                    $stream = $this->diskP($readOnlyDisk)->readStream($path);
                     if ($stream){                       
                         try {
                             $res = $this->diskP($this->cacheDisk)->writeStream($path, $stream);
@@ -147,14 +157,11 @@ class CloudStorageAdapter implements Filesystem
         if ($this->url) {
             return $this->url.$path;
         }
-        if (! $this->checkExistance($this->cacheDisk, $path)) {
-            foreach ($this->remoteDisks as $remoteDisk) {
-                if ($this->checkExistance($remoteDisk,$path)) {
-                    return $this->diskP($remoteDisk)->url($path);
-                }
+        
+        foreach ($this->readOnlyDisks as $readOnlyDisk) {
+            if ($this->checkExistance($readOnlyDisk,$path)) {
+                return $this->diskP($readOnlyDisk)->url($path);
             }
-        } else {
-            return $this->diskP($this->cacheDisk)->url($path);
         }
     }
 
@@ -210,8 +217,8 @@ class CloudStorageAdapter implements Filesystem
         if ($this->checkExistance($this->cacheDisk, $path)) {
             return true;
         } else {
-            foreach ($this->remoteDisks as $remoteDisk) {
-                if ($this->checkExistance($remoteDisk,$path)) {
+            foreach ($this->readOnlyDisks as $readOnlyDisk) {
+                if ($this->checkExistance($readOnlyDisk,$path)) {
                     return true;
                 }
             }
@@ -342,7 +349,12 @@ class CloudStorageAdapter implements Filesystem
 
     public function lastModified($path)
     {
-        return $this->diskP($this->remoteDisks[0])->lastModified($path);
+        foreach ($this->readOnlyDisks as $readOnlyDisk) {
+            if ($this->checkExistance($readOnlyDisk,$path)) {
+                return $this->diskP($readOnlyDisk)->lastModified($path);
+            }
+        }
+        return 0;
     }
 
     public function size($path)
