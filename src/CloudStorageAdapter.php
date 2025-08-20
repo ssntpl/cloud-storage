@@ -31,6 +31,9 @@ class CloudStorageAdapter implements Filesystem
         $this->queue = $config['queue'] ?? null;
         $this->url = $config['url'] ?? null;
         $this->disks = is_array($config['disks'] ?? [])? $config['disks'] ?? []: explode(',',$config['disks']);
+        if (count($this->disks) === 0 && isset($config['remote_disks']) && !empty($config['remote_disks'])) {
+            $this->disks = is_array($config['remote_disks'] ?? [])? $config['remote_disks'] ?? []: explode(',',$config['remote_disks']);
+        }
         for ($i = 0; $i < count($this->disks); $i++) {
             if (is_string($this->disks[$i])) {
                 $this->disks[$i] = config("filesystems.disks")[$this->disks[$i]] ?? [];
