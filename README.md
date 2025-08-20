@@ -26,20 +26,37 @@ composer require ssntpl/cloud-storage
 
    ```php
    'disks' => [
-       'cloud_disk' => [
-           'driver' => 'cloud',
-           'cache_disk' => 'local',
-           'remote_disks' => [
-                'remote_disk_1', 
-                'remote_disk_2', 
-                's3', 
-                'minio',
-                // Add more remote disks as needed...
-           ],
-           'cache_time' => 24, // Time (in hours) to cache files on the cache disk
-       ],
+      'local' => [
+         'driver' => 'local',
+         'root' => storage_path('app/private'),
+         'serve' => true,
+         'throw' => false,
+         'report' => false,
+         'write_enabled' => true,
+         'write_priority' => 2,
+         'read_priority' => 1,
+         'retention' => 1,
+      ],
+      'cloud_disk' => [
+         'driver' => 'cloud',
+         'disks' => [
+            'local', // just write here disk name and other configuration variable can be set on this disk configuration array as mention above.
+            [
+               'driver' => 'local',
+               'root' => storage_path('app/public'),
+               'url' => env('APP_URL').'/storage',
+               'visibility' => 'public',
+               'throw' => false,
+               'report' => false, 
+               'write_enabled' => true, // false means read only opertions should be done. default is true
+               'write_priority' => 1, // 0 means least priority. default is 0
+               'read_priority' => 2, // 0 means least priority. default is 0
+               'retention' => 0, // in days, 0 means no retention. default is 0. if retention is greater than 0, make sure your queue connection sould not be sync.
+            ],
+         ],
+      ],
 
-       // Define other disks (including cache disk, and remote disks used in the cloud disk above)
+      // Define other disks (including cache disk, and remote disks used in the cloud disk above)
    ],
    ```
 

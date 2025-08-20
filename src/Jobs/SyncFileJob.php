@@ -45,10 +45,10 @@ class SyncFileJob implements ShouldQueue, ShouldBeUnique
     /**
      * Get the unique ID for the job.
      */
-    public function uniqueId(): string
-    {
-        return $this->path.'_'.$this->toDisk.'_sync';
-    }
+    // public function uniqueId(): string
+    // {
+    //     return $this->path.'_'.encrypt($this->toDisk).'_sync';
+    // }
 
     public function backoff()
     {

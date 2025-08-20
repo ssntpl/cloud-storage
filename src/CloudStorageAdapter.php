@@ -12,11 +12,12 @@ use Illuminate\Support\Facades\Log;
 
 class CloudStorageAdapter implements Filesystem
 {
-    protected $cacheDisk;
 
-    protected $remoteDisks;
+    protected $disks;
 
-    protected $cacheTime;
+    protected $readDisks;
+
+    protected $writeDisks;
 
     protected $queue;
 
@@ -26,141 +27,99 @@ class CloudStorageAdapter implements Filesystem
 
     public function __construct($config)
     {
-        $this->connection = $config['connection']??null;
-        $this->queue = $config['queue']??null;
-        $this->url = $config['url']??null;
-        $this->cacheDisk = $config['cache_disk'];
-        $this->cacheTime = $config['cache_time'];
-        $this->remoteDisks = is_array($config['remote_disks'])? $config['remote_disks']: explode(',',$config['remote_disks']);
+        $this->connection = $config['connection'] ?? null;
+        $this->queue = $config['queue'] ?? null;
+        $this->url = $config['url'] ?? null;
+        $this->disks = is_array($config['disks'] ?? [])? $config['disks'] ?? []: explode(',',$config['disks']);
+        for ($i = 0; $i < count($this->disks); $i++) {
+            if (is_string($this->disks[$i])) {
+                $this->disks[$i] = config("filesystems.disks")[$this->disks[$i]] ?? [];
+            }
+        }
+        $this->writeDisks = array_filter($this->disks, fn($disk) => $disk['write_enabled'] ?? true === true);
+        $this->readDisks = $this->disks;
+
+        usort($this->writeDisks, function ($a, $b) {
+            $aPriority = $a['write_priority'] ?? PHP_INT_MAX;
+            $bPriority = $b['write_priority'] ?? PHP_INT_MAX;
+            return $aPriority <=> $bPriority;
+        });
+        usort($this->readDisks, function ($a, $b) {
+            $aPriority = $a['read_priority'] ?? PHP_INT_MAX;
+            $bPriority = $b['read_priority'] ?? PHP_INT_MAX;
+            return $aPriority <=> $bPriority;
+        });
     }
 
     private function diskP($disk)
     {
-        return Storage::disk($disk);
+        return Storage::build($disk);
     }
 
-    private function setInCacheDisk($path, $deleteCache = false)
+    public function sync($path, $fromDisk, $index)
     {
-        $res = true;
-        if (! $this->checkExistance($this->cacheDisk, $path)) {
-            $res = false;
-            $deleteCache = false;
-            foreach ($this->remoteDisks as $remoteDisk) {
-                if ($this->checkExistance($remoteDisk, $path)) {
-                    $stream = $this->diskP($remoteDisk)->readStream($path);
-                    if ($stream){                       
-                        try {
-                            $res = $this->diskP($this->cacheDisk)->writeStream($path, $stream);
-                        } finally {
-                            if (isset($stream)) {
-                                fclose($stream);
-                            }
-                        }
-                    }
-                    $deleteCache = true;
-                    break;
+        foreach ($this->writeDisks as $idx => $disk) {
+            if ($idx === $index) {
+                if ($fromDisk['retention'] ?? 0 > 0) {
+                    DeleteFileJob::dispatch($path, $fromDisk)->delay(now()->addDays($fromDisk['retention']))->onConnection($fromDisk['connection'] ?? null)->onQueue($fromDisk['queue'] ?? null);
                 }
+                continue; // Skip syncing to the same disk
             }
-        } 
-        if ($deleteCache && $this->cacheTime != 0) {
-            DeleteFileJob::dispatch($path, $this->cacheDisk, $this->remoteDisks)->onConnection($this->connection)->onQueue($this->queue)->delay(now()->addHours($this->cacheTime));
+            SyncFileJob::dispatch($path, $fromDisk, $disk)->onConnection($this->connection)->onQueue($this->queue);
         }
 
-        return $res;
+        return true;
     }
 
-    public function sync($path, $fromDisk)
-    {
-        if ($this->setInCacheDisk($path, true)) {
-            foreach ($this->remoteDisks as $remoteDisk) {
-                SyncFileJob::dispatch($path, $fromDisk, $remoteDisk)->onConnection($this->connection)->onQueue($this->queue);
-            }
-
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
-     * sync file fromDisk to toDisk with path. If want to delete the file from fromDisk set the value true of deleteFromDisk
-     * @param  string  $path
-     * @param  string  $fromDisk
-     * @param  string  $toDisk
-     * @param  bool  $deleteFromDisk
-     * @return bool|\Exception
-     */
-    public static function syncToDisk($path, $fromDisk, $toDisk, $deleteFromDisk = false)
+    public static function syncToDisk($path, $fromDisk, $toDisk)
     {
         $res = false;
-        $stream = Storage::disk($fromDisk)->readStream($path);
+        $stream = Storage::build($fromDisk)->readStream($path);
         if ($stream) {
             try {
-                $res = Storage::disk($toDisk)->writeStream($path, $stream);
+                $res = Storage::build($toDisk)->writeStream($path, $stream);
             } finally {
                 if (isset($stream)) {
                     fclose($stream);
                 }
             }
             
-            if ($deleteFromDisk && $res){
-                Storage::disk($fromDisk)->delete($path);
-            }
-            
             if (!$res){
                 throw new Exception('unable to sync file into disk');
+            } else if ($res && $toDisk['retention'] ?? 0 > 0) {
+                DeleteFileJob::dispatch($path, $toDisk)->delay(now()->addDays($toDisk['retention']))->onConnection($toDisk['connection'] ?? null)->onQueue($toDisk['queue'] ?? null);
             }
         }
+
         return $res;
     }
 
-
-    /**
-     * Delete file from disk if file exist at any given disks(ifSyscedDisks), If ifSyncedDisks are null delete file from disk without check.
-     * @param string $path
-     * @param string $disk
-     * @param array $ifExistDisk
-     * @return bool
-     */
-    public static function deleteFromDisk($path, $fromDisk, $ifSyncedDisks = null)
+    public static function deleteFromDisk($path, $fromDisk)
     {
         $isExist = self::checkExistance($fromDisk, $path);
-        if ( $isExist && $ifSyncedDisks) {
-            foreach ($ifSyncedDisks as $disk) {
-                if (self::checkExistance($disk, $path)) {                    
-                    return Storage::disk($fromDisk)->delete($path);
-                }
-            }
-            return false;
-        } elseif ($isExist){
-            return Storage::disk($fromDisk)->delete($path);
+        if ($isExist){
+            return Storage::build($fromDisk)->delete($path);
         }
         return false;
     }
 
-    /**
-     * Summary of url
-     * @param string $path
-     */
     public function url($path)
     {
         if ($this->url) {
             return $this->url.$path;
         }
-        if (! $this->checkExistance($this->cacheDisk, $path)) {
-            foreach ($this->remoteDisks as $remoteDisk) {
-                if ($this->checkExistance($remoteDisk,$path)) {
-                    return $this->diskP($remoteDisk)->url($path);
-                }
+        
+        foreach ($this->readDisks as $disk) {
+            if ($this->checkExistance($disk,$path)) {
+                return $this->diskP($disk)->url($path);
             }
-        } else {
-            return $this->diskP($this->cacheDisk)->url($path);
         }
+        return null;
     }
 
     private static function checkExistance($disk, $path){
         try {
-            return Storage::disk($disk)->exists($path);
+            return Storage::build($disk)->exists($path);
         } catch (\Throwable $exception) {
             Log::error("Unable to check file existence on ".$disk);
             return false;
@@ -170,50 +129,58 @@ class CloudStorageAdapter implements Filesystem
     // Implement all required methods from the Filesystem interface
     public function put($path, $contents, $options = [])
     {
-        $res = $this->diskP($this->cacheDisk)->put($path, $contents, $options);
-        if ($this->remoteDisks && $res) {
-            $this->sync($path, $this->cacheDisk);
+        foreach ($this->writeDisks as $index => $disk) {
+            $res = $this->diskP($disk)->put($path, $contents, $options);
+            if ($res && $this->checkExistance($disk,$path)) {
+                $this->sync($path, $disk, $index);
+                return $res;
+            }
         }
 
-        return $res;
+        return false;
     }
 
     public function path($path)
     {
-        if ($this->setInCacheDisk($path)) {
-            return $this->diskP($this->cacheDisk)->path($path);
+        foreach ($this->readDisks as $disk) {
+            if ($this->checkExistance($disk,$path)) {
+                return $this->diskP($disk)->path($path);
+            }
         }
+        return null;
     }
 
     public function putFile($path, $file = null, $options = [])
     {
-        $res = $this->diskP($this->cacheDisk)->putFile($path, $file, $options);
-        if ($this->remoteDisks && $res) {
-            $this->sync($path, $this->cacheDisk);
+        foreach ($this->writeDisks as $index => $disk) {
+            $res = $this->diskP($disk)->putFile($path, $file, $options);
+            if ($res && $this->checkExistance($disk,$path)) {
+                $this->sync($res, $disk, $index);
+                return $res;
+            }
         }
 
-        return $res;
+        return false;
     }
 
     public function putFileAs($path, $file, $name = null, $options = [])
     {
-        $res = $this->diskP($this->cacheDisk)->putFileAs($path, $file, $name, $options);
-        if ($this->remoteDisks && $res) {
-            $this->sync("$path/$name", $this->cacheDisk);
+        foreach ($this->writeDisks as $index => $disk) {
+            $res = $this->diskP($disk)->putFileAs($path, $file, $name, $options);
+            if ($res && $this->checkExistance($disk,$path)) {
+                $this->sync($res, $disk, $index);
+                return $res;
+            }
         }
 
-        return $res;
+        return false;
     }
 
     public function exists($path)
     {
-        if ($this->checkExistance($this->cacheDisk, $path)) {
-            return true;
-        } else {
-            foreach ($this->remoteDisks as $remoteDisk) {
-                if ($this->checkExistance($remoteDisk,$path)) {
-                    return true;
-                }
+        foreach ($this->readDisks as $disk) {
+            if ($this->checkExistance($disk,$path)) {
+                return true;
             }
         }
 
@@ -222,35 +189,43 @@ class CloudStorageAdapter implements Filesystem
 
     public function get($path)
     {
-        if ($this->setInCacheDisk($path)) {
-            return $this->diskP($this->cacheDisk)->get($path);
+        foreach ($this->readDisks as $disk) {
+            if ($this->checkExistance($disk,$path)) {
+                return $this->diskP($disk)->get($path);
+            }
         }
+        return null;
     }
 
     public function readStream($path)
     {
-        if ($this->setInCacheDisk($path)) {
-            return $this->diskP($this->cacheDisk)->readStream($path);
+        foreach ($this->readDisks as $disk) {
+            if ($this->checkExistance($disk,$path)) {
+                return $this->diskP($disk)->readStream($path);
+            }
         }
+        return null;
     }
 
     public function writeStream($path, $resource, array $options = [])
     {
-        $res = $this->diskP($this->cacheDisk)->writeStream($path, $resource, $options);
-        if ($this->remoteDisks && $res) {
-            $this->sync($path, $this->cacheDisk);
+        foreach ($this->writeDisks as $index => $disk) {
+            $res = $this->diskP($disk)->writeStream($path, $resource, $options);
+            if ($res && $this->checkExistance($disk,$path)) {
+                $this->sync($path, $disk, $index);
+                return $res;
+            }
         }
 
-        return $res;
+        return false;
     }
 
     public function copy($from, $to)
     {
-        if ($this->setInCacheDisk($from)) {
-            $res = $this->diskP($this->cacheDisk)->copy($from, $to);
-            if ($this->remoteDisks && $res) {
-                $this->sync($to, $this->cacheDisk);
-
+        foreach ($this->writeDisks as $index => $disk) {
+            $res = $this->diskP($disk)->copy($from, $to);
+            if ($res && $this->checkExistance($disk,$to)) {
+                $this->sync($to, $disk, $index);
                 return $res;
             }
         }
@@ -260,108 +235,118 @@ class CloudStorageAdapter implements Filesystem
 
     public function move($from, $to)
     {
-        foreach ($this->remoteDisks as $remoteDisk) {
-            ActionSyncJob::dispatch(ActionSyncJob::MOVE, $remoteDisk, $from, $to)->onConnection($this->connection)->onQueue($this->queue);
+        foreach ($this->writeDisks as $disk) {
+            ActionSyncJob::dispatch(ActionSyncJob::MOVE, $disk, $from, $to)->onConnection($this->connection)->onQueue($this->queue);
         }
-        $this->diskP($this->cacheDisk)->move($from, $to);
-
+        
         return true;
     }
 
     public function append($path, $data)
     {
-        foreach ($this->remoteDisks as $remoteDisk) {
-            ActionSyncJob::dispatch(ActionSyncJob::APPEND, $remoteDisk, $path, $data)->onConnection($this->connection)->onQueue($this->queue);
+        foreach ($this->writeDisks as $disk) {
+            ActionSyncJob::dispatch(ActionSyncJob::APPEND, $disk, $path, $data)->onConnection($this->connection)->onQueue($this->queue);
         }
-        $this->diskP($this->cacheDisk)->append($path, $data);
-
+        
         return true;
     }
 
     public function prepend($path, $data)
     {
-        foreach ($this->remoteDisks as $remoteDisk) {
-            ActionSyncJob::dispatch(ActionSyncJob::PREPEND, $remoteDisk, $path, $data)->onConnection($this->connection)->onQueue($this->queue);
+        foreach ($this->writeDisks as $disk) {
+            ActionSyncJob::dispatch(ActionSyncJob::PREPEND, $disk, $path, $data)->onConnection($this->connection)->onQueue($this->queue);
         }
-        $this->diskP($this->cacheDisk)->prepend($path, $data);
-
+        
         return true;
     }
 
     public function setVisibility($path, $visibility)
     {
-        foreach ($this->remoteDisks as $remoteDisk) {
-            ActionSyncJob::dispatch(ActionSyncJob::SET_VISIBILITY, $remoteDisk, $path, $visibility)->onConnection($this->connection)->onQueue($this->queue);
+        foreach ($this->writeDisks as $disk) {
+            ActionSyncJob::dispatch(ActionSyncJob::SET_VISIBILITY, $disk, $path, $visibility)->onConnection($this->connection)->onQueue($this->queue);
         }
-        $this->diskP($this->cacheDisk)->setVisibility($path, $visibility);
-
+        
         return true;
     }
     
     public function makeDirectory($path)
     {
-        foreach ($this->remoteDisks as $remoteDisk) {
-            ActionSyncJob::dispatch(ActionSyncJob::MAKE_DIRECTORY, $remoteDisk, $path)->onConnection($this->connection)->onQueue($this->queue);
+        foreach ($this->writeDisks as $disk) {
+            ActionSyncJob::dispatch(ActionSyncJob::MAKE_DIRECTORY, $disk, $path)->onConnection($this->connection)->onQueue($this->queue);
         }
-        $this->diskP($this->cacheDisk)->makeDirectory($path);
 
         return true;
     }
 
     public function deleteDirectory($directory)
     {
-        foreach ($this->remoteDisks as $remoteDisk) {
-            ActionSyncJob::dispatch(ActionSyncJob::DELETE_DIRECTORY, $remoteDisk, $directory)->onConnection($this->connection)->onQueue($this->queue);
+        foreach ($this->writeDisks as $disk) {
+            ActionSyncJob::dispatch(ActionSyncJob::DELETE_DIRECTORY, $disk, $directory)->onConnection($this->connection)->onQueue($this->queue);
         }
-        $this->diskP($this->cacheDisk)->deleteDirectory($directory);
 
         return true;
     }
 
     public function allDirectories($directory = null)
     {
-        return $this->diskP($this->remoteDisks[0])->allDirectories($directory);
+        return $this->diskP($this->readDisks[0])->allDirectories($directory);
     }
 
     public function allFiles($directory = null)
     {
-        return $this->diskP($this->remoteDisks[0])->allFiles($directory);
+        return $this->diskP($this->readDisks[0])->allFiles($directory);
     }
 
     public function files($directory = null, $recursive = false)
     {
-        return $this->diskP($this->remoteDisks[0])->files($directory, $recursive);
+        // return $this->diskP($this->readDisks[0])->files($directory, $recursive);
+        $files = [];
+        foreach ($this->readDisks as $idx => $disk) {
+            $files = array_merge($files, $this->diskP($disk)->files($directory, $recursive));
+        }
+        return $files;
     }
 
     public function getVisibility($path)
     {
-        if ($this->setInCacheDisk($path)) {
-            return $this->diskP($this->cacheDisk)->getVisibility($path);
+        foreach ($this->readDisks as $disk) {
+            if ($this->checkExistance($disk,$path)) {
+                return $this->diskP($disk)->getVisibility($path);
+            }
         }
+        return '';
     }
 
     public function lastModified($path)
     {
-        return $this->diskP($this->remoteDisks[0])->lastModified($path);
+        foreach ($this->readDisks as $disk) {
+            if ($this->checkExistance($disk,$path)) {
+                return $this->diskP($disk)->lastModified($path);
+            }
+        }
+        return 0;
     }
 
     public function size($path)
     {
-        if ($this->setInCacheDisk($path)) {
-            return $this->diskP($this->cacheDisk)->size($path);
+        foreach ($this->readDisks as $disk) {
+            if ($this->checkExistance($disk,$path)) {
+                return $this->diskP($disk)->size($path);
+            }
         }
+        return 0;
     }
 
     public function directories($directory = null, $recursive = false)
     {
-        return $this->diskP($this->remoteDisks[0])->directories($directory, $recursive);
+        return $this->diskP($this->readDisks[0] ?? '')->directories($directory, $recursive);
     }
 
     public function delete($paths)
     {        
-        foreach ($this->remoteDisks as $remoteDisk) {
-            DeleteFileJob::dispatch($paths, $remoteDisk)->onConnection($this->connection)->onQueue($this->queue);
+        foreach ($this->writeDisks as $disk) {
+            DeleteFileJob::dispatch($paths, $disk)->onConnection($this->connection)->onQueue($this->queue);
         }
-        return $this->diskP($this->cacheDisk)->delete($paths);
+        return true;
     }
 }

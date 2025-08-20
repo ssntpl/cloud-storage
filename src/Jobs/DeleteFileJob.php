@@ -19,16 +19,14 @@ class DeleteFileJob implements ShouldQueue, ShouldBeUnique
 
     protected $path;
     protected $fromdisk;
-    protected $remoteDisks;
 
     /**
      * Create a new job instance.
      */
-    public function __construct($path, $fromDisk, $remoteDisks =null)
+    public function __construct($path, $fromDisk)
     {
         $this->path = $path;
         $this->fromdisk = $fromDisk;
-        $this->remoteDisks = $remoteDisks;
     }
 
     /**
@@ -38,16 +36,16 @@ class DeleteFileJob implements ShouldQueue, ShouldBeUnique
      */
     public function handle()
     {
-        CloudStorageAdapter::deleteFromDisk($this->path, $this->fromdisk, $this->remoteDisks);
+        CloudStorageAdapter::deleteFromDisk($this->path, $this->fromdisk);
     }
 
     /**
      * Get the unique ID for the job.
      */
-    public function uniqueId(): string
-    {
-        return $this->path.'_'.$this->fromdisk.'_delete';
-    }
+    // public function uniqueId(): string
+    // {
+    //     return $this->path.'_'.$this->fromdisk.'_delete';
+    // }
 
     public function backoff()
     {
