@@ -36,13 +36,6 @@ class ActionSyncJob implements ShouldQueue, ShouldBeUnique
 
     protected $data;
 
-    /**
-     * Create a new job instance.
-     * @param string $action
-     * @param string $disk
-     * @param string $path
-     * @param string $data
-     */
     public function __construct($action, $disk, $path, $data = null)
     {
         $this->action = $action;
@@ -60,27 +53,27 @@ class ActionSyncJob implements ShouldQueue, ShouldBeUnique
     {
         switch ($this->action){
             case self::MOVE:
-                Storage::disk($this->disk)->move($this->path,$this->data);
+                Storage::build($this->disk)->move($this->path,$this->data);
                 break;
 
             case self::APPEND:
-                Storage::disk($this->disk)->append($this->path,$this->data);
+                Storage::build($this->disk)->append($this->path,$this->data);
                 break;
 
             case self::PREPEND:
-                Storage::disk($this->disk)->prepend($this->path,$this->data);
+                Storage::build($this->disk)->prepend($this->path,$this->data);
                 break;
 
             case self::SET_VISIBILITY:
-                Storage::disk($this->disk)->setVisibility($this->path,$this->data);
+                Storage::build($this->disk)->setVisibility($this->path,$this->data);
                 break;
 
             case self::MAKE_DIRECTORY:
-                Storage::disk($this->disk)->makeDirectory($this->path);
+                Storage::build($this->disk)->makeDirectory($this->path);
                 break;
 
             case self::DELETE_DIRECTORY:
-                Storage::disk($this->disk)->deleteDirectory($this->path);
+                Storage::build($this->disk)->deleteDirectory($this->path);
                 break;
 
         } 
@@ -90,13 +83,13 @@ class ActionSyncJob implements ShouldQueue, ShouldBeUnique
     /**
      * Get the unique ID for the job.
      */
-    public function uniqueId(): string
-    {
-        if ($this->data){
-            return $this->path.'_'.$this->disk.'_'.$this->action.'_'.$this->data;
-        }
-        return $this->path.'_'.$this->disk.'_'.$this->action;
-    }
+    // public function uniqueId(): string
+    // {
+    //     if ($this->data){
+    //         return $this->path.'_'.$this->disk.'_'.$this->action.'_'.$this->data;
+    //     }
+    //     return $this->path.'_'.$this->disk.'_'.$this->action;
+    // }
 
     public function backoff()
     {
