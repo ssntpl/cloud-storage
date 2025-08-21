@@ -302,12 +302,7 @@ class CloudStorageAdapter implements Filesystem
 
     public function files($directory = null, $recursive = false)
     {
-        // return $this->diskP($this->readDisks[0])->files($directory, $recursive);
-        $files = [];
-        foreach ($this->readDisks as $idx => $disk) {
-            $files = array_merge($files, $this->diskP($disk)->files($directory, $recursive));
-        }
-        return $files;
+        return $this->diskP($this->readDisks[0])->files($directory, $recursive);
     }
 
     public function getVisibility($path)
