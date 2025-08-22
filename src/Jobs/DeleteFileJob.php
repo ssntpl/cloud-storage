@@ -10,7 +10,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Ssntpl\CloudStorage\CloudStorageAdapter;
 
-class DeleteFileJob implements ShouldQueue, ShouldBeUnique
+class DeleteFileJob implements ShouldQueue//, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
