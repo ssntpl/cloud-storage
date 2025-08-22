@@ -39,7 +39,7 @@ class CloudStorageAdapter implements Filesystem
                 $this->disks[$i] = config("filesystems.disks")[$this->disks[$i]] ?? [];
             }
         }
-        $this->writeDisks = array_filter($this->disks, fn($disk) => $disk['write_enabled'] ?? true === true);
+        $this->writeDisks = array_filter($this->disks, fn($disk) => ($disk['write_enabled'] ?? true) === true);
         $this->readDisks = $this->disks;
 
         usort($this->writeDisks, function ($a, $b) {
@@ -63,7 +63,7 @@ class CloudStorageAdapter implements Filesystem
     {
         foreach ($this->writeDisks as $idx => $disk) {
             if ($idx === $index) {
-                if ($fromDisk['retention'] ?? 0 > 0) {
+                if (($fromDisk['retention'] ?? 0) > 0) {
                     DeleteFileJob::dispatch($path, $fromDisk)->delay(now()->addDays($fromDisk['retention']))->onConnection($fromDisk['connection'] ?? null)->onQueue($fromDisk['queue'] ?? null);
                 }
                 continue; // Skip syncing to the same disk
@@ -89,7 +89,7 @@ class CloudStorageAdapter implements Filesystem
             
             if (!$res){
                 throw new Exception('unable to sync file into disk');
-            } else if ($res && $toDisk['retention'] ?? 0 > 0) {
+            } else if ($res && ($toDisk['retention'] ?? 0) > 0) {
                 DeleteFileJob::dispatch($path, $toDisk)->delay(now()->addDays($toDisk['retention']))->onConnection($toDisk['connection'] ?? null)->onQueue($toDisk['queue'] ?? null);
             }
         }
