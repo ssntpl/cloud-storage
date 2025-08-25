@@ -42,6 +42,9 @@ class ActionSyncJob implements ShouldQueue//, ShouldBeUnique
         $this->disk = $disk;
         $this->path = $path;
         $this->data = $data;
+        if (is_string($this->disk)) {
+            $this->disk = config("filesystems.disks")[$this->disk] ?? [];
+        }
     }
 
     /**

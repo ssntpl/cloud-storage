@@ -30,32 +30,67 @@ class CloudStorageAdapter implements Filesystem
         $this->connection = $config['connection'] ?? null;
         $this->queue = $config['queue'] ?? null;
         $this->url = $config['url'] ?? null;
-        $this->disks = is_array($config['disks'] ?? [])? $config['disks'] ?? []: explode(',',$config['disks']);
-        if (count($this->disks) === 0 && isset($config['remote_disks']) && !empty($config['remote_disks'])) {
-            $this->disks = is_array($config['remote_disks'] ?? [])? $config['remote_disks'] ?? []: explode(',',$config['remote_disks']);
+        $this->disks = self::getDisks($config);
+        $this->readDisks = self::getReadDisks($this->disks);
+        $this->writeDisks = self::getWriteDisks($this->disks);
+    }
+
+    protected static function getDisks($config): array
+    {
+        $disks = [];
+        $disks = is_array($config['disks'] ?? [])? $config['disks'] ?? []: explode(',',$config['disks']);
+        if (count($disks) === 0 && isset($config['remote_disks']) && !empty($config['remote_disks'])) {
+            $disks = is_array($config['remote_disks'] ?? [])? $config['remote_disks'] ?? []: explode(',',$config['remote_disks']);
         }
-        for ($i = 0; $i < count($this->disks); $i++) {
-            if (is_string($this->disks[$i])) {
-                $this->disks[$i] = config("filesystems.disks")[$this->disks[$i]] ?? [];
+        if (isset($config['cache_disk']) && !empty($config['cache_disk']) && !in_array($config['cache_disk'], $disks)) {
+            $cacheDisk = config("filesystems.disks")[$config['cache_disk']] ?? [];
+            if ($cacheDisk && isset($config['cache_time']) && $config['cache_time'] > 0) {
+                $cacheDisk['retention'] = (int) (($config['cache_time'] < 24) ? 1 : ($config['cache_time'] / 24));
+            }
+            $cacheDisk['write_priority'] = 1;
+            $cacheDisk['read_priority'] = 1;
+
+            array_unshift($disks,  $cacheDisk);
+        }
+        
+        for ($i = 0; $i < count($disks); $i++) {
+            if (is_string($disks[$i])) {
+                $disks[$i] = config("filesystems.disks")[$disks[$i]] ?? [];
             }
         }
-        $this->writeDisks = array_filter($this->disks, fn($disk) => ($disk['write_enabled'] ?? true) === true);
-        $this->readDisks = $this->disks;
 
-        usort($this->writeDisks, function ($a, $b) {
-            $aPriority = $a['write_priority'] ?? PHP_INT_MAX;
-            $bPriority = $b['write_priority'] ?? PHP_INT_MAX;
-            return $aPriority <=> $bPriority;
-        });
-        usort($this->readDisks, function ($a, $b) {
+        return $disks;
+    }
+    
+    protected static function getReadDisks($disks): array
+    {
+        $readDisks = $disks;
+        usort($readDisks, function ($a, $b) {
             $aPriority = $a['read_priority'] ?? PHP_INT_MAX;
             $bPriority = $b['read_priority'] ?? PHP_INT_MAX;
             return $aPriority <=> $bPriority;
         });
+
+        return $readDisks;
+    }
+
+    protected static function getWriteDisks($disks): array
+    {
+        $writeDisks = array_filter($disks, fn($disk) => ($disk['write_enabled'] ?? true) === true);
+        usort($writeDisks, function ($a, $b) {
+            $aPriority = $a['write_priority'] ?? PHP_INT_MAX;
+            $bPriority = $b['write_priority'] ?? PHP_INT_MAX;
+            return $aPriority <=> $bPriority;
+        });
+
+        return $writeDisks;
     }
 
     private function diskP($disk)
     {
+        if (is_string($disk)) {
+            $disk = config("filesystems.disks")[$disk] ?? [];
+        }
         return Storage::build($disk);
     }
 
@@ -76,6 +111,12 @@ class CloudStorageAdapter implements Filesystem
 
     public static function syncToDisk($path, $fromDisk, $toDisk)
     {
+        if (is_string($fromDisk)) {
+            $fromDisk = config("filesystems.disks")[$fromDisk] ?? [];
+        }
+        if (is_string($toDisk)) {
+            $toDisk = config("filesystems.disks")[$toDisk] ?? [];
+        }
         $res = false;
         $stream = Storage::build($fromDisk)->readStream($path);
         if ($stream) {
@@ -99,10 +140,24 @@ class CloudStorageAdapter implements Filesystem
 
     public static function deleteFromDisk($path, $fromDisk)
     {
-        $isExist = self::checkExistance($fromDisk, $path);
-        if ($isExist){
+        if (is_string($fromDisk)) {
+            $fromDisk = config("filesystems.disks")[$fromDisk] ?? [];
+        }
+
+        $isEsists = false;        
+        $config = config("filesystems.disks.".Storage::getDefaultDriver()) ?? [];
+        $disks = self::getDisks($config);
+        foreach ($disks as $disk) {
+            if ($disk === $fromDisk) {
+                continue;
+            }
+            $isEsists = self::checkExistance($disk, $path);
+        }
+
+        if ($isEsists && self::checkExistance($fromDisk, $path)){
             return Storage::build($fromDisk)->delete($path);
         }
+        
         return false;
     }
 
@@ -122,6 +177,9 @@ class CloudStorageAdapter implements Filesystem
 
     private static function checkExistance($disk, $path){
         try {
+            if (is_string($disk)) {
+                $disk = config("filesystems.disks")[$disk] ?? [];
+            }
             return Storage::build($disk)->exists($path);
         } catch (\Throwable $exception) {
             Log::error("Unable to check file existence on ".$disk);
