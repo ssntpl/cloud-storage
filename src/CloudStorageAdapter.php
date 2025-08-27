@@ -144,17 +144,18 @@ class CloudStorageAdapter implements Filesystem
             $fromDisk = config("filesystems.disks")[$fromDisk] ?? [];
         }
 
-        $isEsists = false;        
+        $isExists = false;        
         $config = config("filesystems.disks.".Storage::getDefaultDriver()) ?? [];
         $disks = self::getDisks($config);
         foreach ($disks as $disk) {
             if ($disk === $fromDisk) {
                 continue;
             }
-            $isEsists = self::checkExistance($disk, $path);
+            $isExists = self::checkExistance($disk, $path);
+            if($isExists) return;
         }
 
-        if ($isEsists && self::checkExistance($fromDisk, $path)){
+        if ($isExists && self::checkExistance($fromDisk, $path)){
             return Storage::build($fromDisk)->delete($path);
         }
         
