@@ -152,7 +152,7 @@ class CloudStorageAdapter implements Filesystem
                 continue;
             }
             $isExists = self::checkExistance($disk, $path);
-            if($isExists) return;
+            if ($isExists) break;
         }
 
         if ($isExists && self::checkExistance($fromDisk, $path)){
