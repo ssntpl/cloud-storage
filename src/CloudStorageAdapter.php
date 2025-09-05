@@ -406,4 +406,21 @@ class CloudStorageAdapter implements Filesystem
         }
         return true;
     }
+
+    /**
+     * Get the mime-type of a given file.
+     *
+     * @param  string  $path
+     * @return string|false
+    */
+    public function mimeType($path)
+    {
+        foreach ($this->readDisks as $disk) {
+            if ($this->checkExistance($disk,$path)) {
+                return $this->diskP($disk)->mimeType($path);
+            }
+        }
+
+        return null;
+    }
 }
